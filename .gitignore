@@ -35,3 +35,10 @@ kubeconfig
 __pycache__/
 *.pyc
 .venv/
+
+# Temporary Terraform plan files
+tfplan
+plan-review.txt
+
+# Child module provider lock files
+terraform/modules/**/.terraform.lock.hcl
