@@ -12,7 +12,7 @@ output "public_subnet_ids" {
   }
 
 }
-output "private_subnet_id" {
+output "private_subnet_ids" {
   description = "Private subnet IDs keyed by availability zone"
 
   value = {
