@@ -20,3 +20,31 @@ module "eks_networking" {
     "10.0.12.0/24"
   ]
 }
+
+# IAM role for the EKS control plane and managed worker nodes
+module "eks_iam" {
+  source = "../../modules/iam"
+
+  project_name = "aws-eks-platform-engineering"
+  environment  = "dev"
+}
+
+#EKS control plane and managed worker nodes
+
+module "eks_cluster" {
+  source = "../../modules/eks"
+
+  project_name       = "aws-eks-platform-engineering"
+  environment        = "dev"
+  kubernetes_version = "1.36"
+
+  private_subnet_ids = values(module.eks_networking.private_subnet_ids)
+
+  cluster_role_arn    = module.eks_iam.eks_cluster_role_arn
+  node_role_arn       = module.eks_iam.eks_node_role_arn
+  public_access_cidrs = var.eks_public_access_cidrs
+  vpc_cni_role_arn    = module.eks_iam.vpc_cni_role_arn
+
+  depends_on = [module.eks_iam]
+
+}
