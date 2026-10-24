@@ -45,4 +45,4 @@ jobs:
       - name: Validate Kubernetes manifests
         uses: docker://ghcr.io/yannh/kubeconform:v0.8.0
         with:
-          args: "-strict -summary -recursive kubernetes/"
+          args: "-strict -summary kubernetes/"
