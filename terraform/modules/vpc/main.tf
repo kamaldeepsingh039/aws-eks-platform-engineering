@@ -48,6 +48,24 @@ resource "aws_subnet" "private" {
 
 }
 
+resource "aws_subnet" "db_subnet" {
+  for_each = {
+    for index, az in var.availability_zones :
+    az => var.db_subnet_cidrs[index]
+  }
+  vpc_id            = aws_vpc.this.id
+  availability_zone = each.key
+  cidr_block        = each.value
+
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-db-${each.key}"
+  }
+}
+
+
+
+
 
 resource "aws_internet_gateway" "this" {
 
@@ -101,6 +119,24 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[each.key].id
 }
 
+resource "aws_route_table" "database" {
+
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-db-rt"
+
+  }
+
+}
+resource "aws_route_table_association" "database" {
+  for_each = aws_subnet.db_subnet
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.database.id
+}
+
+
 resource "aws_eip" "nat" {
   domain = "vpc"
 
@@ -126,6 +162,6 @@ resource "aws_route" "private_nat" {
 
   route_table_id         = each.value.id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_internet_gateway.this.id
+  nat_gateway_id         = aws_nat_gateway.this.id
 
 }

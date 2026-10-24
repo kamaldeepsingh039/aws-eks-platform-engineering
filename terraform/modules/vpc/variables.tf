@@ -25,9 +25,10 @@ variable "availability_zones" {
       length(var.availability_zones) >= 2 &&
       length(var.availability_zones) == length(distinct(var.availability_zones)) &&
       length(var.availability_zones) == length(var.public_subnet_cidrs) &&
-      length(var.availability_zones) == length(var.private_subnet_cidrs)
+      length(var.availability_zones) == length(var.private_subnet_cidrs) &&
+      length(var.availability_zones) == length(var.db_subnet_cidrs)
     )
-    error_message = "Provide at least two unique availability zones, with exactly one public and one private subnet CIDR per zone"
+    error_message = "Provide at least two unique availability zones, with exactly one public, one private and one database subnet CIDR per zone"
   }
 
 
@@ -41,5 +42,10 @@ variable "public_subnet_cidrs" {
 
 variable "private_subnet_cidrs" {
   description = "CIDR blocks for private subnets"
+  type        = list(string)
+}
+
+variable "db_subnet_cidrs" {
+  description = "CIDR blocks for database subnets"
   type        = list(string)
 }

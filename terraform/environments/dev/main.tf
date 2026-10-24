@@ -19,6 +19,11 @@ module "eks_networking" {
     "10.0.11.0/24",
     "10.0.12.0/24"
   ]
+
+  db_subnet_cidrs = [
+    "10.0.21.0/24",
+    "10.0.22.0/24"
+  ]
 }
 
 # IAM role for the EKS control plane and managed worker nodes
@@ -47,4 +52,16 @@ module "eks_cluster" {
 
   depends_on = [module.eks_iam]
 
+}
+
+# RDS PostgreSQL infrastructure
+module "rds" {
+  source = "../../modules/rds"
+
+  project_name = "aws-eks-platform-engineering"
+  environment  = "dev"
+
+  vpc_id                       = module.eks_networking.vpc_id
+  db_subnet_ids                = module.eks_networking.db_subnet_ids
+  eks_source_security_group_id = module.eks_cluster.cluster_security_group_id
 }

@@ -17,3 +17,8 @@ output "node_group_id" {
   description = "Identifier of the EKS managed node group"
   value       = aws_eks_node_group.this.id
 }
+
+output "cluster_security_group_id" {
+  description = "Security group ID automatically created by Amazon EKS"
+  value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+}

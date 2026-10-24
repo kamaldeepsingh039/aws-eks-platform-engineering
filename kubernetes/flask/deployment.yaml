@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+   name: flask-app
+   namespace: backend
+   labels:
+     app: flask-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+       app: flask-app
+  template:
+     metadata:
+       labels:
+          app: flask-app
+     spec:
+       containers:
+         - name: flask-app
+           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/docker-flask-app:latest
+           ports:
+            - containerPort: 5000
+           resources:
+             requests:
+               memory: "128Mi"
+               cpu: "100m"
+             limits:
+               memory: "256Mi"
+               cpu: "250m"
+           readinessProbe:
+             httpGet:
+               path: /health
+               port: 5000
+             initialDelaySeconds: 5
+             periodSeconds: 10
+           livenessProbe:
+             httpGet:
+               path: /health
+               port: 5000
+             initialDelaySeconds: 15
+             periodSeconds: 20
+             failureThreshold: 3
+           startupProbe:
+             httpGet:
+               path: /health
+               port: 5000
+             periodSeconds: 5
+             failureThreshold: 12
