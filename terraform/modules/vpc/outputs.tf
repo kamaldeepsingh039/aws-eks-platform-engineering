@@ -21,6 +21,16 @@ output "private_subnet_ids" {
   }
 
 }
+output "db_subnet_ids" {
+  description = "database subnet IDs keyed by availability zone"
+
+  value = {
+    for az, subnet in aws_subnet.db_subnet :
+    az => subnet.id
+  }
+
+}
+
 output "nat_gateway_id" {
   description = "ID of NAT Gateway"
   value       = aws_nat_gateway.this.id
