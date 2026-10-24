@@ -1,0 +1,19 @@
+# Frontend namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+   name: frontend
+   labels:
+      app.kubernetes.io/part-of: eks-platform
+
+
+---
+
+# Backend namespace
+
+apiVersion: v1
+kind: Namespace
+metadata:
+    name: backend
+    labels:
+       app.kubernetes.io/part-of: eks-platform
