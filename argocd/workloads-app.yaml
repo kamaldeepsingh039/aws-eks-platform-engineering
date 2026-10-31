@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: eks-platform-workloads
+  namespace: argocd
+spec:
+  project: eks-platform
+
+  source:
+    repoURL: https://github.com/kamaldeepsingh039/aws-eks-platform-engineering.git
+    targetRevision: main
+    path: kubernetes
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+            
