@@ -1,0 +1,26 @@
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Python virtual environments
+venv/
+.venv/
+
+# Environment variables and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Git files
+.git/
+.gitignore
+
+# Local testing and development files
+.pytest_cache/
+.coverage
+.DS_Store
+
+# Docker build files not needed in the image
+.dockerignore

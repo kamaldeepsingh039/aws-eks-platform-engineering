@@ -65,3 +65,11 @@ module "rds" {
   db_subnet_ids                = module.eks_networking.db_subnet_ids
   eks_source_security_group_id = module.eks_cluster.cluster_security_group_id
 }
+
+
+# ECR module
+module "ecr" {
+  source = "../../modules/ecr"
+
+  repository_name = "eks-flask-app"
+}
