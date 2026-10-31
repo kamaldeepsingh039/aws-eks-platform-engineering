@@ -8,77 +8,50 @@ The infrastructure is developed incrementally using reusable Terraform modules, 
 
 > **Project Status — October 2026**
 >
-> **Phases 1–3 complete:** Repository foundation, multi-AZ VPC networking, IAM roles, and Amazon EKS configuration are implemented and merged into `main`.
+> **Source-code milestone:** Terraform networking, IAM, EKS, RDS, ECR, application and Kubernetes integration configurations are implemented. The Kubernetes integration PR (#5) passed Terraform and Kubernetes CI validation; merge status should be confirmed before describing it as merged.
 >
-> **Current milestone:** Phase 4 — AWS infrastructure deployment and verification.
+> **Current work:** Argo CD GitOps configuration is next, followed by Jenkins CI/CD and monitoring. AWS infrastructure deployment and end-to-end verification remain pending.
 >
-> **Deployment status:** The infrastructure is configured and validated through Terraform. AWS resources for this project have not yet been deployed.
+> **Deployment status:** ECR has been provisioned and a tested Flask image published. The EKS/VPC/RDS workload stack is not yet deployed; Kubernetes workloads have not been validated on EKS.
 
 ---
 
 ## 1. Architecture Overview
 
-The platform is designed around an Amazon EKS cluster hosted within a custom AWS VPC in the Canada Central Region (`ca-central-1`).
+The platform is designed for Amazon EKS in `ca-central-1`. The Terraform configuration includes a two-AZ VPC, public, private application and dedicated private database subnets; a single NAT Gateway; an EKS 1.36 cluster with private managed nodes; RDS PostgreSQL; and an encrypted ECR repository with immutable tags.
 
-The current Terraform implementation defines:
+The application configuration consists of an Nginx frontend proxy and a Python Flask task-manager API, with PostgreSQL persistence. AWS Secrets Manager manages the RDS master credentials. External Secrets Operator (ESO), using EKS Pod Identity, is configured to synchronize these into a Kubernetes Secret. Stakater Reloader is configured to restart Flask Pods when that Secret changes.
 
-- A VPC spanning two Availability Zones.
-- Public and private subnets with separate routing.
-- An Internet Gateway and single NAT Gateway.
-- Amazon EKS running Kubernetes 1.36.
-- A managed worker-node group hosted in private subnets.
-- Dedicated IAM roles for EKS, EC2 worker nodes, and VPC CNI.
-- EKS managed networking, DNS, and Pod Identity add-ons.
-
-Future phases will introduce application workloads, ingress, persistent data, automated delivery, GitOps, security scanning, and observability.
+**Implementation boundaries:** Terraform and Kubernetes definitions are in source control, but EKS/VPC/RDS are not yet provisioned. Only the ECR repository and a tested Flask image have been deployed to AWS. Ingress-controller installation, Argo CD, Jenkins and the monitoring stack require their own implementation and runtime verification.
 
 ### Target Architecture
 
 ```mermaid
 flowchart TB
-    Users["Application users"]
-    ALB["Application Load Balancer<br/>(planned)"]
-    Users --> ALB
-
-    subgraph AWS["AWS — ca-central-1"]
-        subgraph VPC["VPC — 10.0.0.0/16"]
-            subgraph Public["Public subnets — 2 AZs"]
-                NAT["NAT Gateway"]
-                IGW["Internet Gateway"]
-            end
-
-            subgraph Private["Private subnets — 2 AZs"]
-                Nodes["EKS Managed Worker Nodes"]
-                Nginx["Nginx Frontend<br/>(planned)"]
-                Flask["Flask Application<br/>(planned)"]
-                Nodes --> Nginx
-                Nginx --> Flask
-            end
-
-            RDS["RDS PostgreSQL<br/>(planned)"]
-            Flask --> RDS
-            Nodes -. "Outbound access" .-> NAT
-            NAT --> IGW
-        end
-
-        EKS["Amazon EKS Control Plane"]
-        IAM["IAM Roles / Pod Identity"]
-        ECR["Amazon ECR"]
-        EKS --> Nodes
-        IAM -. "Permissions" .-> EKS
-        IAM -. "Pod identity" .-> Nodes
-        ECR -. "Container images" .-> Nodes
+    Users[Users] --> ALB[Public ALB / Ingress - planned runtime]
+    subgraph AWS["AWS ca-central-1"]
+      subgraph VPC[VPC across two AZs]
+        ALB --> Nginx[Nginx frontend Pods]
+        Nginx --> Flask[Flask backend Pods]
+        Flask --> RDS[(RDS PostgreSQL)]
+        Nodes[EKS managed nodes] --> Nginx
+        Nodes --> Flask
+      end
+      ECR[Amazon ECR] -. image pull .-> Nodes
+      Secrets[AWS Secrets Manager] --> ESO[External Secrets Operator]
+      PodID[EKS Pod Identity] -. IAM access .-> ESO
+      ESO --> KSecret[Kubernetes DB Secret]
+      KSecret --> Flask
+      KSecret --> Init[Database init Job]
+      Reloader[Stakater Reloader] -. Secret changes .-> Flask
     end
-
-    ALB -. "Ingress" .-> Nginx
-    GitHub["GitHub"] --> CI["Jenkins CI/CD<br/>(planned)"]
-    CI --> ECR
-    CI --> GitOps["Argo CD<br/>(planned)"]
-    GitOps -. "Reconciliation" .-> EKS
+    GitHub[GitHub] --> Jenkins[Jenkins CI - planned]
+    Jenkins --> ECR
+    Jenkins -. manifest update .-> Argo[Argo CD - planned]
+    Argo -. GitOps reconciliation .-> Nodes
 ```
 
-**Architecture status:** The VPC, IAM, EKS, and managed add-on resources are defined in Terraform. The diagram also includes planned application and delivery components that are not yet implemented in this project.
-
+**Diagram legend:** Connections depict intended runtime behavior, not proof of deployment. Helm values for ESO and Reloader exist; controllers and GitOps are not installed on EKS yet.
 ---
 
 ## 2. Networking Design
@@ -240,59 +213,75 @@ These dependencies coordinate provisioning order.
 
 ## 6. Repository Structure
 
+Key directories and files (abridged):
+
 ```text
 aws-eks-platform-engineering/
+├── app/
+│   ├── app.py
+│   ├── init_db.py
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── terraform/
-│   ├── environments/
-│   │   └── dev/
-│   │       ├── backend.tf
-│   │       ├── main.tf
-│   │       ├── providers.tf
-│   │       ├── variables.tf
-│   │       └── versions.tf
+│   ├── environments/dev/
+│   │   ├── main.tf
+│   │   ├── secrets-iam.tf
+│   │   ├── outputs.tf
+│   │   ├── backend.tf
+│   │   └── ...
 │   └── modules/
 │       ├── vpc/
-│       │   ├── main.tf
-│       │   ├── variables.tf
-│       │   └── outputs.tf
 │       ├── iam/
-│       │   ├── main.tf
-│       │   ├── variables.tf
-│       │   └── outputs.tf
-│       └── eks/
-│           ├── main.tf
-│           ├── variables.tf
-│           └── outputs.tf
+│       ├── eks/
+│       ├── rds/
+│       └── ecr/
+├── kubernetes/
+│   ├── flask/
+│   │   ├── deployment.yaml
+│   │   └── init-db-job.yaml
+│   ├── external-secrets/
+│   │   ├── secret-store.yaml
+│   │   └── external-secret.yaml
+│   └── ... (Nginx, ingress, policies, namespaces, services)
+├── helm/
+│   ├── external-secrets/values.yaml
+│   ├── reloader/values.yaml
+│   └── versions.yaml
+├── argocd/          # In progress; separate feature branch
+├── jenkins/         # Planned
+├── monitoring/      # Planned
+├── .github/workflows/validate.yml
 └── README.md
 ```
 
-The Terraform implementation separates reusable infrastructure modules from environment-specific configuration.
+`helm/versions.yaml` records selected chart versions; it is **not** a Helmfile or an automatic chart installer. The repository separates infrastructure modules, application artifacts, Kubernetes manifests, and platform add-on configuration.
 
-Local Terraform working directories, variable values, temporary plans, and other sensitive or generated files are excluded from the repository as appropriate.
-
+State snapshots, credentials, local Terraform variables, and generated plans must not be committed.
 ---
 
 ## 7. Technology Stack
 
-| Area | Technology | Current status |
+| Area | Technology | Verified state |
 |---|---|---|
-| Infrastructure as Code | Terraform, AWS Provider | VPC, IAM, EKS implemented |
-| State management | Amazon S3, Terraform locking | Configured |
-| Source control | Git, GitHub, Pull Requests | In use |
-| Networking | VPC, subnets, IGW, NAT Gateway | Configured in Terraform |
-| Identity | AWS IAM, EKS Pod Identity | Configured in Terraform |
-| Kubernetes | Amazon EKS, managed node groups | Configured in Terraform |
-| Core networking | VPC CNI, kube-proxy, CoreDNS | Configured in Terraform |
-| Containers | Docker, Amazon ECR | Integration planned |
-| Applications | Nginx, Python Flask | Deployment planned |
-| Database | Amazon RDS PostgreSQL | Planned |
-| Ingress | AWS Load Balancer Controller | Planned |
-| Delivery | Jenkins, Helm, Argo CD | Planned |
-| Security scanning | Trivy | Planned |
-| Observability | Prometheus, Grafana, Loki | Planned |
-| Autoscaling | HPA, metrics-server, Karpenter | Planned |
-| Network security | Kubernetes NetworkPolicies | Planned |
+| Infrastructure as Code | Terraform | VPC, IAM, EKS, RDS, ECR and ESO Pod Identity configurations written and validated |
+| Terraform state | S3 remote backend | Encryption, versioning and locking configured; backend region `us-east-2` |
+| AWS workload Region | Canada Central | `ca-central-1` |
+| Kubernetes | EKS 1.36, managed nodes | Defined, not yet provisioned |
+| Containers and registry | Docker, Amazon ECR | ECR provisioned; Flask `v3` image built, tested and pushed |
+| Application | Flask, Nginx | Flask source and image available; Kubernetes/Nginx manifests prepared; EKS deployment pending |
+| Database | RDS PostgreSQL | Terraform configuration present; deployment and connectivity pending |
+| Secrets and identity | Secrets Manager, ESO, EKS Pod Identity | IAM + manifests defined; ESO runtime and secret sync not tested |
+| Helm | ESO `2.14.0`, Reloader `2.2.19` | Values and version record; charts rendered locally, not installed on EKS |
+| Kubernetes validation | Kubeconform, GitHub Actions | 18/18 resources schema-valid, including ESO CRDs; no skipped resources |
+| Network isolation | Kubernetes NetworkPolicies | Manifests prepared; enforcement not yet tested |
+| Ingress | AWS Load Balancer Controller | Ingress design/manifests present; controller provisioning remains a dependency |
+| GitOps | Argo CD | Separate feature branch planned/in progress |
+| Continuous delivery | Jenkins | Planned |
+| Image scanning | Trivy | Flask image scanned; remaining high-severity OS findings require review |
+| Observability | Prometheus, Grafana, Loki | Planned; not deployed |
+| Autoscaling | HPA, Karpenter | Future work, not implemented |
 
+**Validation is not deployment:** local formatting, schema checking, chart rendering and successful image publishing do not establish EKS workload health.
 ---
 
 ## 8. Infrastructure Workflow
@@ -346,7 +335,7 @@ Before applying, the deployment workflow includes:
 - Review of IAM access, resource dependencies, and bootstrap requirements.
 - Cost and teardown considerations.
 
-The initial AWS deployment is pending.
+ECR has already been deployed for image publishing; provisioning of the EKS/VPC/RDS stack is pending.
 
 ### Terraform State
 
@@ -389,7 +378,7 @@ Primary billable components include:
 - NAT Gateway and data processing.
 - Public IPv4 addresses.
 - Worker-node EBS volumes.
-- Future load balancers, databases, and additional services.
+- Load balancers, RDS databases, and other provisioned services.
 
 Billing begins as resources are provisioned and continues until they are removed according to AWS billing rules.
 
@@ -403,70 +392,59 @@ The reusable Terraform code, GitHub repository, and separately maintained remote
 
 ## 10. Validation and Implementation Evidence
 
-### Phase 2 — VPC Networking
+### VPC / IAM / EKS foundation
 
-The VPC module passed Terraform validation and planning.
+- VPC, IAM and EKS Terraform modules passed local validation and planning.
+- Earlier milestones recorded plans of **18 additions** (VPC) and **31 additions** (IAM/EKS); those are historical snapshots, not the current infrastructure plan.
+- Managed EKS add-on compatibility and resource dependencies were reviewed.
 
-```text
-Plan: 18 to add, 0 to change, 0 to destroy.
-```
+### Application and integration checkpoint (PR #5)
 
-Networking implementation was reviewed and merged through Pull Request #1.
+- Flask task-manager source, database initialization script, multi-stage Dockerfile and ECR Terraform module added.
+- Docker image `eks-flask-app:v3` built for `linux/amd64`, locally tested, pushed to ECR; image digest recorded during verification.
+- Terraform database secret ARN output and scoped ESO Pod Identity permissions added.
+- Kubernetes Deployment, initialization Job, SecretStore and ExternalSecret configured.
+- ESO and Reloader Helm charts rendered locally from pinned versions.
+- GitHub Actions **Terraform validation and Kubernetes validation passed** after fixes to Terraform formatting and ESO service enum casing.
+- Final Kubeconform result: **18 resources in 15 files; 18 valid, 0 invalid, 0 errors, 0 skipped**, using the ESO CRD schema catalog.
 
-### Phase 3 — IAM and EKS
+### Open checks and security findings
 
-The consolidated Terraform configuration passed formatting, validation, and plan review.
+- The RDS endpoint and secret ARN placeholders must be populated from Terraform outputs after provision; these values are not passwords.
+- Validate EKS, Pod Identity, ESO secret synchronization, init Job, Flask-to-RDS access and Reloader restart behavior on the deployed cluster.
+- Verify AWS Load Balancer Controller installation and ingress behavior before treating external access as complete.
+- A Trivy scan of the published runtime image reported **44 High OS vulnerability findings**, with no Critical or Python findings in that scan. Remediation or documented risk assessment is still pending.
+- No actual EKS workload deployment, database integration test, monitoring dashboard or GitOps reconciliation has been completed.
 
-```text
-Plan: 31 to add, 0 to change, 0 to destroy.
-```
-
-Additional checks included:
-
-- Review of IAM trust policies and AWS-managed policy attachments.
-- Verification of EKS module inputs and outputs.
-- AWS CLI checks for managed add-on version compatibility.
-- Review of cluster, add-on, and managed node group dependencies.
-- Git staged-change and whitespace verification.
-- Pull Request review and merge into `main`.
-
-**Validation boundary:** These results confirm the configuration can be planned successfully. They do not establish that AWS resources have been deployed or that Kubernetes workloads are healthy.
-
+**Evidence boundary:** The checks above establish code/schema/build validity, not an operational or production-ready platform.
 ---
 
 ## 11. Project Roadmap
 
-Progress refers to implementation milestones, not necessarily AWS deployment status.
+This roadmap distinguishes source-code work from actual cloud deployment. A configuration can be implemented without the corresponding running service having been verified.
 
-| Phase | Milestone | Status |
+| Area | Implementation status | Runtime status |
 |---|---|---|
-| 1 | Project preparation, tooling, GitHub repository and Terraform backend | Complete |
-| 2 | Reusable multi-AZ VPC networking module | Complete |
-| 3 | IAM roles, EKS control plane, managed node groups and add-ons | Complete |
-| 4 | AWS infrastructure deployment and verification | Next |
-| 5 | Kubernetes workloads: Nginx, Flask and database connectivity | Planned |
-| 6 | ALB Ingress, network isolation and security | Planned |
-| 7 | Helm, Jenkins CI/CD, ECR, Argo CD and Trivy | Planned |
-| 8 | Observability, metrics, logging and HPA | Planned |
-| 9 | Karpenter, resilience and cost optimization | Planned |
-| 10 | Operational testing, troubleshooting and portfolio documentation | Planned |
+| Repository, Git workflow, Terraform backend | Implemented | Backend configured |
+| VPC, IAM, EKS and managed add-ons | Terraform defined and validated | Not deployed |
+| RDS, managed credentials and ECR | Terraform modules defined and validated | ECR deployed; RDS not deployed |
+| Flask image and Kubernetes workload manifests | Implemented; image published; manifests schema-valid | EKS workload not deployed |
+| Secrets integration / Pod Identity | Terraform, ESO manifests and Helm values written | Not tested on EKS |
+| Helm add-ons (ESO, Reloader) | Chart versions and values verified | Not installed on EKS |
+| Ingress and network policies | Kubernetes definitions prepared | Controller/enforcement not verified |
+| Argo CD GitOps | Next separate feature branch | Not installed |
+| Jenkins CI/CD and Trivy gating | Planned; image scan performed manually | Pipeline not implemented |
+| Prometheus, Grafana, Loki | Planned | Not deployed |
+| HPA, Karpenter, resilience testing | Future scope | Not deployed |
+| Operational tests, documentation, teardown | Validation evidence collected; README maintained | End-to-end verification and teardown pending |
 
-### Next Milestone: Phase 4
+### Next Steps
 
-The next phase focuses on provisioning the AWS infrastructure and validating operational readiness.
-
-Key objectives include verifying:
-
-- Cluster provisioning and API connectivity.
-- IAM permissions and authentication.
-- Managed worker-node registration and readiness.
-- VPC CNI and Pod Identity integration.
-- CoreDNS and kube-proxy health.
-- Private subnet connectivity and outbound routing.
-- Terraform teardown and cleanup.
-
-Deployment findings and remediation work will be documented as the environment is tested.
-
+1. Merge validated application-integration work into `main` if PR #5 has not already been merged; keep PR checks green.
+2. Implement Argo CD on `feature/argocd-gitops`, then Jenkins and monitoring in separate reviewable branches.
+3. Confirm prerequisites for deployment, including Load Balancer Controller and chart/operator installation order.
+4. Provision and verify infrastructure, replace the nonsecret RDS output placeholders, and test database, ESO and application behavior.
+5. Capture evidence, review any security findings, then intentionally tear down chargeable resources while retaining source code and the separately managed state backend.
 ---
 
 ## 12. Engineering Considerations
