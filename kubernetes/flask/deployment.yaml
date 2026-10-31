@@ -5,6 +5,8 @@ metadata:
    namespace: backend
    labels:
      app: flask-app
+   annotations:
+     secret.reloader.stakater.com/reload: "flask-db-credentials"
 spec:
   replicas: 2
   selector:
@@ -17,7 +19,28 @@ spec:
      spec:
        containers:
          - name: flask-app
-           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/docker-flask-app:latest
+           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:v3
+           env:
+             - name: DB_HOST
+               value: "${RDS_ENDPOINT}"
+             - name: DB_PORT
+               value: "5432"
+             - name: DB_NAME
+               value: "postgres"
+             - name: DB_SSLMODE
+               value: "require"
+             - name: DB_USER
+               valueFrom:
+                 secretKeyRef:
+                   name: flask-db-credentials
+                   key: DB_USER
+
+             - name: DB_PASSWORD
+               valueFrom:
+                 secretKeyRef:
+                   name: flask-db-credentials
+                   key: DB_PASSWORD
+                   
            ports:
             - containerPort: 5000
            resources:

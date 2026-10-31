@@ -45,4 +45,9 @@ jobs:
       - name: Validate Kubernetes manifests
         uses: docker://ghcr.io/yannh/kubeconform:v0.8.0
         with:
-          args: "-strict -summary kubernetes/"
+         args: >-
+           -strict
+           -summary
+           -schema-location default
+           -schema-location https://raw.githubusercontent.com/CustomResourceDefinition/catalog/main/schema/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+           kubernetes/

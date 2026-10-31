@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flask-db-init
+  namespace: backend
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-init
+          image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:v3
+          imagePullPolicy: IfNotPresent
+          command: ["python", "init_db.py"]
+          env:
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "postgres"
+            - name: DB_SSLMODE
+              value: "require"
+            - name: DB_HOST
+              value: "${RDS_ENDPOINT}"  
+
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: flask-db-credentials
+                  key: DB_USER
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: flask-db-credentials
+                  key: DB_PASSWORD  
