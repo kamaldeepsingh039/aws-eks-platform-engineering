@@ -1,0 +1,231 @@
+
+pipeline {
+    // Run the pipeline on an available Jenkins agent.
+    // Planned execution environment is Jenkins on EC2.
+    agent any
+
+    options {
+        // Display execution timestamps in Jenkins logs.
+        timestamps()
+
+        // Prevent overlapping runs of this Jenkins job.
+        disableConcurrentBuilds()
+    }
+
+    stages {
+
+        // Stage 1: Retrieve source code from GitHub.
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        // Stage 2: Create a traceable Docker image tag.
+        // Example: Jenkins build 42 + Git SHA a1b2c3d
+        // Result: 42-a1b2c3d
+        stage('Prepare Image Tag') {
+            steps {
+                script {
+                    def shortSha = sh(
+                        script: 'git rev-parse --short=7 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${shortSha}"
+
+                    echo "Docker image tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        // Stage 3: Verify Flask behavior before building.
+        // Tests use a virtual environment and mocked DB failures.
+        stage('Flask Unit Tests') {
+            steps {
+                dir('app') {
+                    sh '''
+                        set -eu
+
+                        python3 -m venv .venv
+                        .venv/bin/python -m pip install -r requirements.txt
+                        .venv/bin/python -m unittest test_app.py -v
+                    '''
+                }
+            }
+        }
+
+        // Stage 4: Build a Linux AMD64 Docker image.
+        // This matches intended EKS worker architecture.
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build \
+                      --platform linux/amd64 \
+                      -t eks-flask-app:${IMAGE_TAG} \
+                      -f app/Dockerfile app/
+                '''
+            }
+        }
+
+        // Stage 5: Scan the image before publishing.
+        // Currently reports HIGH/CRITICAL vulnerabilities.
+        // Exit code 0 means findings do not block the release.
+        stage('Trivy Security Scan') {
+            steps {
+                sh '''
+                    trivy image \
+                      --severity CRITICAL,HIGH \
+                      --exit-code 0 \
+                      --no-progress \
+                      eks-flask-app:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        // Stage 6: Publish release images to Amazon ECR.
+        // Feature branches can test, but cannot publish.
+        // Only application changes on main qualify.
+        stage('Push to Amazon ECR') {
+            when {
+                allOf {
+                    branch 'main'
+                    changeset 'app/**'
+                }
+            }
+
+            steps {
+                sh '''
+                    set -eu
+
+                    # Identify AWS account and ECR repository.
+                    # EC2 IAM role supplies AWS credentials.
+                    AWS_REGION=ca-central-1
+                    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+                    ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                    IMAGE="${ECR_REGISTRY}/eks-flask-app:${IMAGE_TAG}"
+
+                    # Check ECR tag immutability before publishing.
+                    # A missing tag is expected; other AWS errors must fail.
+                    ECR_ERROR=$(mktemp)
+                    trap 'rm -f "${ECR_ERROR}"' EXIT
+
+                    if aws ecr describe-images \
+                        --repository-name eks-flask-app \
+                        --image-ids imageTag="${IMAGE_TAG}" \
+                        --region "${AWS_REGION}" \
+                        >/dev/null 2>"${ECR_ERROR}"; then
+
+                        echo "Image tag already exists in ECR. Stopping."
+                        exit 1
+
+                    elif grep -q 'ImageNotFoundException' "${ECR_ERROR}"; then
+                        echo "Image tag is available for publishing."
+
+                    else
+                        echo "AWS ECR lookup failed:"
+                        cat "${ECR_ERROR}"
+                        exit 1
+                    fi
+
+                    # Authenticate Docker using temporary AWS credentials.
+                    aws ecr get-login-password --region "${AWS_REGION}" |
+                      docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+                    # Publish the exact image tested and scanned earlier.
+                    docker tag "eks-flask-app:${IMAGE_TAG}" "${IMAGE}"
+                    docker push "${IMAGE}"
+                '''
+            }
+        }
+
+        // Stage 7: Propose the new image through a GitHub PR.
+        // Jenkins does not merge changes directly into main.
+        // Human review is our release approval gate.
+        stage('Update GitOps Image Reference') {
+            when {
+                allOf {
+                    branch 'main'
+                    changeset 'app/**'
+                }
+            }
+
+            steps {
+                // Jenkins securely supplies Git and GitHub CLI credentials.
+                withCredentials([
+                    gitUsernamePassword(
+                        credentialsId: 'github-gitops',
+                        gitToolName: 'Default'
+                    ),
+                    usernamePassword(
+                        credentialsId: 'github-gitops',
+                        usernameVariable: 'GIT_USER',
+                        passwordVariable: 'GH_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+
+                        # Use the same image tag published to ECR.
+                        AWS_REGION=ca-central-1
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+                        IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/eks-flask-app:${IMAGE_TAG}"
+                        BRANCH="gitops/update-flask-${IMAGE_TAG}"
+
+                        # Identify automated commits in Git history.
+                        git config user.name "jenkins-ci"
+                        git config user.email "jenkins-ci@users.noreply.github.com"
+
+                        # Avoid creating a duplicate pull request.
+                        EXISTING_PR=$(gh pr list \
+                            --head "${BRANCH}" \
+                            --state open \
+                            --json number \
+                            --jq '.[0].number // empty')
+
+                        if [ -n "${EXISTING_PR}" ]; then
+                            echo "GitOps PR #${EXISTING_PR} already exists."
+                            exit 0
+                        fi
+
+                        # Start from the latest approved main branch.
+                        git fetch origin main
+
+                        # Avoid overwriting an existing remote branch.
+                        if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null; then
+                            echo "GitOps branch already exists: ${BRANCH}"
+                            echo "Manual review required before retrying."
+                            exit 1
+                        fi
+
+                        git switch -c "${BRANCH}" origin/main
+
+                        # Change only Flask's desired container image.
+                        sed -i "s|image: .*eks-flask-app:.*|image: ${IMAGE}|" \
+                          kubernetes/flask/deployment.yaml
+
+                        # Confirm that the desired image was written.
+                        grep -F "image: ${IMAGE}" kubernetes/flask/deployment.yaml
+
+                        # Commit only the deployment-manifest change.
+                        git add kubernetes/flask/deployment.yaml
+                        git commit -m "ci: update Flask image to build ${IMAGE_TAG}"
+
+                        # Push using Jenkins-managed Git credentials.
+                        git push origin "${BRANCH}"
+
+                        # Create a PR for human approval.
+                        # Argo CD will detect the change after merging.
+                        gh pr create \
+                          --base main \
+                          --head "${BRANCH}" \
+                          --title "ci: update Flask image to build ${IMAGE_TAG}" \
+                          --body "Automated image update from Jenkins image ${IMAGE_TAG}."
+                    '''
+                }
+            }
+        }
+    }
+}
