@@ -58,3 +58,88 @@ spec:
     syncOptions:
       - CreateNamespace=true    
 
+---
+# Prometheus, Grafana and Alertmanager
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-monitoring
+  namespace: argocd
+spec:
+  project: eks-platform
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.17.0
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/monitoring/prometheus-values.yaml
+    - repoURL: https://github.com/kamaldeepsingh039/aws-eks-platform-engineering.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+
+---
+
+# Loki log storage
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+spec:
+  project: eks-platform
+  sources:
+    - repoURL: https://grafana-community.github.io/helm-charts
+      chart: loki
+      targetRevision: 20.2.1
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/monitoring/loki-values.yaml
+    - repoURL: https://github.com/kamaldeepsingh039/aws-eks-platform-engineering.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+
+---
+
+# Grafana Alloy log collector
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  namespace: argocd
+spec:
+  project: eks-platform
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.15.0
+      helm:
+        releaseName: alloy
+        valueFiles:
+          - $values/monitoring/alloy-values.yaml
+    - repoURL: https://github.com/kamaldeepsingh039/aws-eks-platform-engineering.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,56 @@
+# Grafana Alloy configuration for AWS EKS
+# Chart: grafana/alloy 1.15.0
+
+controller:
+  type: deployment
+  replicas: 1
+
+alloy:
+  configMap:
+    create: true
+    content: |
+      // Discover Kubernetes Pods across the cluster
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Attach useful Kubernetes labels to logs
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label = "container"
+        }
+      }
+
+      // Collect logs from Kubernetes Pods
+      loki.source.kubernetes "pod_logs" {
+        targets = discovery.relabel.pod_logs.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      // Send collected logs to Loki
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+        }
+      }
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

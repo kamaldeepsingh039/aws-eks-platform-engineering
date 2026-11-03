@@ -103,3 +103,33 @@ resource "aws_iam_role_policy_attachment" "vpc_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 
 }
+
+# Trust policy for the EBS CSI driver using EKS pod Identity
+data "aws_iam_policy_document" "ebs_csi_assume_role" {
+  statement {
+    effect = "Allow"
+
+    actions = ["sts:AssumeRole", "sts:TagSession"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["pods.eks.amazonaws.com"]
+    }
+  }
+}
+
+# Dedicated IAM role for the EBS CSI controller
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${var.project_name}-${var.environment}-ebs-csi-role"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_assume_role.json
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ebs-csi-role"
+  }
+}
+
+# Allow the EBS CSI driver to manage EBS volumes and snapshots
+resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}

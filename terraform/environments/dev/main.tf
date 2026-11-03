@@ -45,10 +45,11 @@ module "eks_cluster" {
 
   private_subnet_ids = values(module.eks_networking.private_subnet_ids)
 
+  public_access_cidrs = var.eks_public_access_cidrs
   cluster_role_arn    = module.eks_iam.eks_cluster_role_arn
   node_role_arn       = module.eks_iam.eks_node_role_arn
-  public_access_cidrs = var.eks_public_access_cidrs
   vpc_cni_role_arn    = module.eks_iam.vpc_cni_role_arn
+  ebs_csi_role_arn    = module.eks_iam.ebs_csi_role_arn
 
   depends_on = [module.eks_iam]
 

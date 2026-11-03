@@ -37,3 +37,8 @@ variable "vpc_cni_role_arn" {
   description = "IAM role ARN used by VPC CNI through EKS Pod Identity"
   type        = string
 }
+
+variable "ebs_csi_role_arn" {
+  description = "ARN of the IAM role used by the EBS CSI controller"
+  type        = string
+}
