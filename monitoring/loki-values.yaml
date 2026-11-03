@@ -1,0 +1,54 @@
+# Loki configuration for AWS EKS
+# Chart: grafana-community/loki 20.2.1
+
+deploymentMode: Monolithic
+loki:
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+singleBinary:
+  replicas: 1
+
+  persistence:
+    enabled: true
+    storageClass: ebs-gp3
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Disable separate cache Pods to reduce memory usage
+chunksCache:
+  enabled: false
+
+resultsCache:
+  enabled: false
+
+#Disable Simple Scalable components
+read:
+  replicas: 0
+
+write:
+  replicas: 0
+
+backend:
+  replicas: 0

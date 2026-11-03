@@ -103,3 +103,23 @@ resource "aws_eks_addon" "coredns" {
     Name = "${var.project_name}-${var.environment}-coredns"
   }
 }
+
+# Managed EBS persistent storage through the EKS add-on
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name  = aws_eks_cluster.this.name
+  addon_name    = "aws-ebs-csi-driver"
+  addon_version = "v1.67.2-eksbuild.1"
+
+  pod_identity_association {
+    service_account = "ebs-csi-controller-sa"
+    role_arn        = var.ebs_csi_role_arn
+  }
+  depends_on = [
+    aws_eks_addon.pod_identity_agent,
+    aws_eks_node_group.this
+  ]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ebs-csi"
+  }
+}

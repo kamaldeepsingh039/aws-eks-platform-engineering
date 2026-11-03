@@ -14,3 +14,7 @@ output "vpc_cni_role_arn" {
   description = "ARN of the IAM role used by the VPC CNI add-on"
   value       = aws_iam_role.vpc_cni.arn
 }
+output "ebs_csi_role_arn" {
+  description = "ARN of the IAM role used by the EBS CSI controller"
+  value       = aws_iam_role.ebs_csi.arn
+}
