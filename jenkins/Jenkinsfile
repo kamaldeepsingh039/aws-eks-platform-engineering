@@ -10,6 +10,12 @@ pipeline {
 
         // Prevent overlapping runs of this Jenkins job.
         disableConcurrentBuilds()
+
+        // Keep the last 20 builds and artifacts from the last 10
+        buildDiscarder(logRotator(
+            numToKeepStr: '20',
+            artifactNumToKeepStr: '10'
+        ))
     }
 
     stages {
@@ -68,22 +74,45 @@ pipeline {
             }
         }
 
-        // Stage 5: Scan the image before publishing.
-        // Currently reports HIGH/CRITICAL vulnerabilities.
-        // Exit code 0 means findings do not block the release.
-        stage('Trivy Security Scan') {
+       // Stage 5: Generate and archive the vulnerability report
+        stage('Trivy Report') {
             steps {
-                sh '''
+               sh '''
+                   set -eu
+                   trivy image \
+                     --severity CRITICAL,HIGH \
+                     --exit-code 0 \
+                     --no-progress \
+                     --format table \
+                     --output trivy-report.txt \
+                     eks-flask-app:${IMAGE_TAG}
+               '''
+           }
+           post {
+                always {
+                    archiveArtifacts artifacts: 'trivy-report.txt',
+                                     allowEmptyArchive: true
+                }
+           }
+        }
+
+         // Stage 6: Block publishing when fixable vulnerabilities exist
+         stage('Trivy Gate') {
+             steps {
+                 sh '''
+                    set -eu
                     trivy image \
                       --severity CRITICAL,HIGH \
-                      --exit-code 0 \
+                      --ignore-unfixed \
+                      --exit-code 1 \
                       --no-progress \
+                      --skip-db-update \
                       eks-flask-app:${IMAGE_TAG}
-                '''
+                 '''
             }
         }
 
-        // Stage 6: Publish release images to Amazon ECR.
+        // Stage 7: Publish release images to Amazon ECR.
         // Feature branches can test, but cannot publish.
         // Only application changes on main qualify.
         stage('Push to Amazon ECR') {
@@ -140,7 +169,7 @@ pipeline {
             }
         }
 
-        // Stage 7: Propose the new image through a GitHub PR.
+        // Stage 8: Propose the new image through a GitHub PR.
         // Jenkins does not merge changes directly into main.
         // Human review is our release approval gate.
         stage('Update GitOps Image Reference') {
