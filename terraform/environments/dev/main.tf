@@ -39,9 +39,10 @@ module "eks_iam" {
 module "eks_cluster" {
   source = "../../modules/eks"
 
-  project_name       = "aws-eks-platform-engineering"
-  environment        = "dev"
-  kubernetes_version = "1.36"
+  project_name           = "aws-eks-platform-engineering"
+  environment            = "dev"
+  kubernetes_version     = "1.36"
+  metrics_server_version = "v0.9.0-eksbuild.14"
 
   private_subnet_ids = values(module.eks_networking.private_subnet_ids)
 

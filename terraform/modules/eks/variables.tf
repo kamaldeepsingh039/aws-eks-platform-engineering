@@ -42,3 +42,9 @@ variable "ebs_csi_role_arn" {
   description = "ARN of the IAM role used by the EBS CSI controller"
   type        = string
 }
+
+
+variable "metrics_server_version" {
+  description = "Metrics Server EKS add-on version"
+  type        = string
+}
