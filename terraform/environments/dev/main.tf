@@ -75,3 +75,15 @@ module "ecr" {
 
   repository_name = "eks-flask-app"
 }
+
+
+# Jenkins CI/CD server on private EC2
+module "jenkins" {
+  source = "../../modules/jenkins"
+
+  project_name = "aws-eks-platform-engineering"
+  environment  = "dev"
+
+  vpc_id            = module.eks_networking.vpc_id
+  private_subnet_id = module.eks_networking.private_subnet_ids["ca-central-1a"]
+}
