@@ -19,7 +19,7 @@ spec:
      spec:
        containers:
          - name: flask-app
-           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:v3
+           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:3-86d32aa
            env:
              - name: DB_HOST
                value: "${RDS_ENDPOINT}"
