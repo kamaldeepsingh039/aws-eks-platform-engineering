@@ -12,7 +12,9 @@ spec:
   egress:
     - to:
        - ipBlock:
-          cidr: <database_network_CIDR>
+            cidr: 10.0.21.0/24
+       - ipBlock:
+            cidr: 10.0.22.0/24
       ports:
         - protocol: TCP
           port: 5432
