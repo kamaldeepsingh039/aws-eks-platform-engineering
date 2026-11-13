@@ -49,4 +49,6 @@ spec:
     - group: storage.k8s.io
       kind: StorageClass
     - group: networking.k8s.io
-      kind: IngressClass  
+      kind: IngressClass
+    - group: elbv2.k8s.aws
+      kind: IngressClassParams
