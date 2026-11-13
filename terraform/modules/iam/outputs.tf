@@ -18,3 +18,9 @@ output "ebs_csi_role_arn" {
   description = "ARN of the IAM role used by the EBS CSI controller"
   value       = aws_iam_role.ebs_csi.arn
 }
+
+# IAM role ARN for AWS Load Balancer Controller using EKS Pod Identity
+output "alb_controller_role_arn" {
+  description = "ARN of the IAM role used by the AWS Load Balancer Controller"
+  value       = aws_iam_role.alb_controller.arn
+}
