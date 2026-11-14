@@ -19,7 +19,7 @@ spec:
      spec:
        containers:
          - name: flask-app
-           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:3-86d32aa
+           image: 082139776123.dkr.ecr.ca-central-1.amazonaws.com/eks-flask-app:19-26e75f6
            env:
              - name: DB_HOST
                value: "aws-eks-platform-engineering-dev-postgres.c3s2gu6ko9vx.ca-central-1.rds.amazonaws.com"
