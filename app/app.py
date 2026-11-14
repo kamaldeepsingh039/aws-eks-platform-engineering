@@ -114,7 +114,7 @@ def home():
             <title>EKS Task Manager</title>
         </head>
         <body>
-            <h1>AWS EKS Task Manager</h1>
+            <h1>AWS EKS Task Manager — Release Test v2</h1>
             <p>Flask | Gunicorn | Kubernetes | PostgreSQL</p>
 
             <h2>Add a Task</h2>
