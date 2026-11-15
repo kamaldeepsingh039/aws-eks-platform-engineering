@@ -72,3 +72,8 @@ prometheus:
       limits:
         cpu: "1"
         memory: 1Gi
+
+defaultRules:
+  disabled:
+    KubeSchedulerDown: true
+    KubeControllerManagerDown: true
