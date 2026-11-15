@@ -7,12 +7,20 @@ data "aws_ssm_parameter" "amazon_linux_2023" {
 resource "aws_instance" "jenkins" {
   ami                    = data.aws_ssm_parameter.amazon_linux_2023.value
   instance_type          = "t3.large"
+  user_data              = file("${path.module}/bootstrap.sh")
   subnet_id              = var.private_subnet_id
   vpc_security_group_ids = [aws_security_group.jenkins.id]
 
   iam_instance_profile = aws_iam_instance_profile.jenkins.name
 
   associate_public_ip_address = false
+  lifecycle {
+    ignore_changes = [
+      ami,
+      user_data
+    ]
+  }
+
 
   root_block_device {
     volume_size           = 30
